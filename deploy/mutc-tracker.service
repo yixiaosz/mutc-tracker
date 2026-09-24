@@ -1,0 +1,15 @@
+[Unit]
+Description=MUTC event session tracker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/mutc-tracker
+EnvironmentFile=-%h/.config/mutc-tracker/env
+ExecStart=%h/mutc-tracker/.venv/bin/mutc-tracker
+Restart=on-failure
+RestartSec=60
+
+[Install]
+WantedBy=default.target

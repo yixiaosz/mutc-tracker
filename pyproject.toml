@@ -1,0 +1,22 @@
+[project]
+name = "mutc-tracker"
+version = "0.1.0"
+description = "Notify when Melbourne University Tennis Club sessions become bookable"
+readme = "README.md"
+authors = [
+    { name = "yixiao zhang", email = "29092701+yixiaosz@users.noreply.github.com" }
+]
+requires-python = ">=3.13"
+dependencies = []
+
+[project.scripts]
+mutc-tracker = "mutc_tracker:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4.2",
+]
+
+[build-system]
+requires = ["uv_build>=0.9.28,<0.10.0"]
+build-backend = "uv_build"
