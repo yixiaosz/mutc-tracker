@@ -77,7 +77,7 @@ export MUTC_POLL_INTERVAL_SECONDS=300
 Command-line values take precedence over environment values. One hour is 3600
 seconds.
 
-## Run at login with systemd
+## Run at login on Linux with systemd
 
 Create a private environment file:
 
@@ -107,6 +107,85 @@ The tracker also writes rotating logs to
 `~/.local/state/mutc-tracker/tracker.log` and state to
 `~/.local/state/mutc-tracker/state.json`.
 
+## Run at login on macOS with launchd
+
+The same Python tracker runs on macOS using a per-user LaunchAgent. It sends the
+same ntfy alerts and uses the same configuration and state format as Linux.
+Install [uv](https://docs.astral.sh/uv/getting-started/installation/), then run
+`uv sync` from your checkout. uv will provision the required Python version.
+The checkout can be anywhere, including a path containing spaces; keep it at that
+location after installing the agent.
+
+Create a private configuration file:
+
+```bash
+mkdir -p ~/.config/mutc-tracker
+cp .env.example ~/.config/mutc-tracker/env
+chmod 600 ~/.config/mutc-tracker/env
+```
+
+Edit `~/.config/mutc-tracker/env` and replace the sample ntfy topic. The macOS
+launcher sources this file as shell configuration: use `NAME="value"` assignments
+and only include trusted contents. A LaunchAgent does not inherit settings from
+your interactive shell. Use absolute paths for state or log overrides.
+
+Verify the launcher and live API without changing state or sending notifications:
+
+```bash
+/bin/sh deploy/run-macos.sh "$PWD" "$HOME/.config/mutc-tracker/env" --list
+```
+
+Install the LaunchAgent (this only generates its plist), validate it, and start it:
+
+```bash
+uv run python deploy/install-macos-launchagent.py
+plutil -lint "$HOME/Library/LaunchAgents/au.com.mutc.tracker.plist"
+launchctl bootstrap "gui/$(id -u)" "$HOME/Library/LaunchAgents/au.com.mutc.tracker.plist"
+```
+
+Starting the service begins stateful monitoring immediately. With no existing
+state, it creates the normal silent baseline. With existing state, it may send
+notifications for detected changes. Avoid running another continuous tracker
+against the same state file while the service is running.
+
+The agent starts at subsequent logins and restarts after an unexpected failure,
+with a 60-second throttle. Monitoring pauses while the Mac sleeps and continues
+after wake; the next check follows the existing polling loop. It does not run
+while the Mac is shut down or the user is logged out. Changes that occur entirely
+between checks may be missed.
+
+Inspect status and the rotating application log:
+
+```bash
+launchctl print "gui/$(id -u)/au.com.mutc.tracker"
+tail -f "$HOME/.local/state/mutc-tracker/tracker.log"
+```
+
+The usual default state path is `~/.local/state/mutc-tracker/state.json`.
+`XDG_STATE_HOME`, when supplied in the configuration file, changes the default
+state and application-log directory. Startup errors and console output are also
+captured in `~/Library/Logs/mutc-tracker/launchd.log`; that diagnostic file is not
+rotated and can be cleared periodically.
+
+Stop the service before editing configuration or running a manual stateful check:
+
+```bash
+launchctl bootout "gui/$(id -u)" "$HOME/Library/LaunchAgents/au.com.mutc.tracker.plist"
+```
+
+To start it again, use the `launchctl bootstrap` command above. A booted-out agent
+will also load at the next login while its plist remains installed.
+
+To uninstall, stop it first and then remove the plist:
+
+```bash
+rm "$HOME/Library/LaunchAgents/au.com.mutc.tracker.plist"
+```
+
+Configuration, logs, and state are preserved. To move the checkout or reinstall,
+stop and remove the old plist, then rerun the installer from the new checkout.
+The installer refuses to overwrite an existing plist.
+
 ## Other configuration
 
 | Environment variable | Default | Purpose |
@@ -117,6 +196,7 @@ The tracker also writes rotating logs to
 | `MUTC_NTFY_TOKEN` | unset | Optional ntfy access token |
 | `MUTC_STATE_FILE` | XDG state directory | Override state location |
 | `MUTC_LOG_FILE` | XDG state directory | Override log location |
+| `XDG_STATE_HOME` | `~/.local/state` | Base directory for default state and log paths |
 
 Run `uv run mutc-tracker --help` for equivalent command-line options.
 

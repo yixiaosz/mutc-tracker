@@ -1,0 +1,15 @@
+# Local configuration, credentials, and generated tracker data.
+.env
+.env.*
+!.env.example
+state.json
+*.log
+
+# Python environments, caches, and build output.
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
