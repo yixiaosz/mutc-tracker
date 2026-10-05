@@ -1,28 +1,55 @@
 # MUTC Tracker
 
 `mutc-tracker` checks the Melbourne University Tennis Club's public GraphQL API
-and sends an [ntfy](https://ntfy.sh/) notification when an event session becomes
-bookable.
+and sends [ntfy](https://ntfy.sh/) notifications when sessions become bookable,
+places reopen, or previously bookable sessions become full.
 
 It primarily covers **Member Social Hitting**, also catches session-based pop-up
 events with other names, and explicitly excludes **Beginner Tennis Bootcamp**.
 No MUTC username or password is needed for monitoring.
 
+## Platform support
+
+Linux and macOS share one implementation in `main`, with the same CLI, ntfy
+notifications, configuration, and state format. Run it directly in a terminal or
+use your platform's background service:
+
+| Platform | Background service | Deployment files |
+| --- | --- | --- |
+| Linux | systemd user service | `deploy/mutc-tracker.service` |
+| macOS | launchd LaunchAgent | `deploy/install-macos-launchagent.py`, `deploy/run-macos.sh` |
+
+The default polling interval is one hour. Monitoring requires an awake host and
+network access; changes that occur entirely between checks may be missed. The
+macOS agent runs while the user is logged in and resumes after sleep.
+
+Python 3.13 or newer is required. The application uses only the Python standard
+library at runtime; `uv sync` installs the project and development tools and can
+provision a compatible Python version.
+
 ## Detection behavior
 
 - The first run records a baseline and intentionally sends no notifications.
-- A notification is sent when a session changes from unavailable to available.
-- A notification is also sent if a booked-out session gets a free place.
-- A notification is sent when a previously bookable session becomes full, so
-  there is no need to open the login page to check it.
+- `Session released`: a session changes from unavailable to available and not full.
+- `New session released`: a new session is first observed as available and not full
+  after the initial baseline.
+- `Place reopened`: an available, booked-out session gets a free place.
+- `Session now full`: a previously bookable session remains available but becomes
+  full, so there is no need to open the login page to check it.
 - A session first observed as full does not trigger a misleading "now full"
   notification; the tracker must previously have observed it as bookable.
 - Unchanged checks are logged and remain silent.
 - State is saved only after notifications succeed, so failed alerts are retried.
 
+Availability and fullness are separate: a session is bookable only when
+`isAvailable` is true and `isBookedOut` is false. Release and reopening alerts
+include a direct booking link; full alerts are informational and have no booking
+action. The tracker monitors availability; it does not book sessions automatically.
+
 ## Setup
 
-Install the project and development tools:
+Install [uv](https://docs.astral.sh/uv/getting-started/installation/), then install
+the project and development tools from your checkout:
 
 ```bash
 cd ~/mutc-tracker
@@ -38,6 +65,9 @@ Set the topic for the current shell:
 ```bash
 export MUTC_NTFY_TOPIC="mutc-tennis-your-long-random-value"
 ```
+
+These shell settings apply to manual runs. For automatic startup, use the private
+environment file described in the Linux or macOS deployment section below.
 
 Verify what the API currently reports without changing tracker state:
 
@@ -200,8 +230,21 @@ The installer refuses to overwrite an existing plist.
 
 Run `uv run mutc-tracker --help` for equivalent command-line options.
 
-## Tests
+## Development checks
+
+Run from the repository root:
 
 ```bash
 uv run pytest
+uvx ruff check .
+uvx ruff format --check .
+git diff --check
 ```
+
+Tests cover notification transitions, silent baselines, pagination, Bootcamp
+exclusion, failed-delivery state preservation, and macOS deployment behavior,
+including configuration loading and paths containing spaces.
+
+For macOS deployment changes, also run `/bin/sh -n deploy/run-macos.sh`, validate
+the generated plist with `plutil -lint`, and use the launcher's read-only `--list`
+check above. Starting the normal background service is a stateful operation.
